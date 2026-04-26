@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Menu, QrCode, ClipboardList, Plus, Trash2, ShoppingCart, 
   ChevronRight, CheckCircle2, Clock, X, Info, Store, User, Copy, History, Pencil
@@ -17,10 +17,12 @@ const KioskIcon = ({ size = 24, className = "" }) => (
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M3 10L12 3L21 10" />
-    <path d="M4 10V21H20V10" />
-    <path d="M9 14H15V21H9V14Z" />
-    <path d="M1 10H23" />
+    <path d="M12 22c0-4-1-7-1-10" />
+    <path d="M11 12c-2-1-5-1-7 1" />
+    <path d="M11 12c1-3 1-6-1-8" />
+    <path d="M11 12c2-2 5-2 7 0" />
+    <path d="M11 12c1 2 4 4 7 3" />
+    <path d="M11 12c-1 2-4 4-7 3" />
   </svg>
 );
 
@@ -72,6 +74,7 @@ function App() {
   const [clientEstId, setClientEstId] = useState('');
   const [toast, setToast] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const previousOrdersRef = useRef([]);
 
   // --- AUTH ---
   useEffect(() => {
@@ -108,9 +111,10 @@ function App() {
         background_color: "#fff7ed",
         theme_color: "#ea580c",
         icons: [{
-          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ea580c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 10L12 3L21 10' /%3E%3Cpath d='M4 10V21H20V10' /%3E%3Cpath d='M9 14H15V21H9V14Z' /%3E%3Cpath d='M1 10H23' /%3E%3C/svg%3E",
+          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23ea580c'/%3E%3Cpath d='M12 22c0-4-1-7-1-10M11 12c-2-1-5-1-7 1M11 12c1-3 1-6-1-8M11 12c2-2 5-2 7 0M11 12c1 2 4 4 7 3M11 12c-1 2-4 4-7 3' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
           sizes: "192x192",
-          type: "image/svg+xml"
+          type: "image/svg+xml",
+          purpose: "any maskable"
         }]
       };
       
@@ -139,6 +143,23 @@ function App() {
     setupPWA();
   }, []);
 
+  const showToast = useCallback((msg, type = 'info') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+
+    if (typeof Notification !== 'undefined') {
+      if (Notification.permission === 'granted') {
+        new Notification('Click Beach', { body: msg });
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification('Click Beach', { body: msg });
+          }
+        });
+      }
+    }
+  }, []);
+
   // --- DATA FETCHING (POLLING INSTEAD OF REALTIME) ---
   const fetchMenus = useCallback(async () => {
     if (!supabase) return;
@@ -156,11 +177,21 @@ function App() {
     try {
       const { data, error } = await supabase.from('clickbeach_orders').select('*');
       if (error) console.error(error);
-      if (data) setOrders(data);
+      if (data) {
+        if (user && view === 'admin' && previousOrdersRef.current.length > 0) {
+          const currentIds = previousOrdersRef.current.map(o => o.id);
+          const newOrders = data.filter(o => !currentIds.includes(o.id) && String(o.establishmentId || o.establishmentid || o.establishment_id).toLowerCase() === String(user.id).toLowerCase());
+          if (newOrders.length > 0) {
+            showToast("Novo pedido recebido!");
+          }
+        }
+        previousOrdersRef.current = data;
+        setOrders(data);
+      }
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [user, view, showToast]);
 
   useEffect(() => {
     if (!user && view !== 'client') return;
@@ -176,11 +207,6 @@ function App() {
 
     return () => clearInterval(interval);
   }, [user, view, fetchMenus, fetchOrders]);
-
-  const showToast = (msg, type = 'info') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -297,6 +323,7 @@ function LandingView({ setView, setClientEstId }) {
         
         if (authError) throw new Error(authError.message);
         setView('admin');
+        if (typeof Notification !== 'undefined') Notification.requestPermission();
       } catch (err) {
         setError(err.message);
       } finally {
@@ -313,6 +340,7 @@ function LandingView({ setView, setClientEstId }) {
         const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
         if (authError) throw new Error(authError.message === 'Invalid login credentials' ? 'Usuário ou senha incorretos.' : authError.message);
         setView('admin');
+        if (typeof Notification !== 'undefined') Notification.requestPermission();
       } catch (err) {
         setError(err.message === 'Invalid login credentials' ? 'Usuário ou senha incorretos.' : err.message);
       } finally {
@@ -405,12 +433,17 @@ function LandingView({ setView, setClientEstId }) {
 
 // --- ADMIN VIEW ---
 function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, setView, formatCurrency, setClientEstId, refreshMenus, refreshOrders }) {
+  const firstName = user?.user_metadata?.nome_completo?.split(' ')[0] || 'Estabelecimento';
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 pb-20 md:pb-0">
       <header className="bg-white shadow-sm border-b border-slate-200 p-4 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2 text-orange-600 font-bold text-xl">
-            <KioskIcon /> Painel do Quiosque
+          <div>
+            <div className="text-sm text-slate-500 font-medium">Olá, {firstName}</div>
+            <div className="flex items-center gap-2 text-orange-600 font-bold text-xl">
+              <KioskIcon /> Painel do Quiosque
+            </div>
           </div>
           <button onClick={() => setView('landing')} className="text-sm text-slate-500 hover:text-slate-800">Sair</button>
         </div>

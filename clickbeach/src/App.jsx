@@ -142,18 +142,28 @@ function App() {
   // --- DATA FETCHING (POLLING INSTEAD OF REALTIME) ---
   const fetchMenus = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase.from('clickbeach_menu').select('*');
-    if (data) setMenuItems(data);
+    try {
+      const { data, error } = await supabase.from('clickbeach_menu').select('*');
+      if (error) console.error(error);
+      if (data) setMenuItems(data);
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
   const fetchOrders = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase.from('clickbeach_orders').select('*');
-    if (data) setOrders(data);
+    try {
+      const { data, error } = await supabase.from('clickbeach_orders').select('*');
+      if (error) console.error(error);
+      if (data) setOrders(data);
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user && view !== 'client') return;
     
     fetchMenus();
     fetchOrders();
@@ -165,7 +175,7 @@ function App() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [user, fetchMenus, fetchOrders]);
+  }, [user, view, fetchMenus, fetchOrders]);
 
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type });
@@ -201,22 +211,34 @@ function App() {
           user={user}
           adminTab={adminTab}
           setAdminTab={setAdminTab}
-          menuItems={menuItems.filter(m => m.establishmentId === user.id)}
-          orders={orders.filter(o => o.establishmentId === user.id).sort((a,b) => b.timestamp - a.timestamp)}
+          menuItems={menuItems.filter(m => {
+            const mId = m.establishmentId || m.establishmentid || m.establishment_id;
+            return mId && String(mId).toLowerCase() === String(user.id).toLowerCase();
+          })}
+          orders={orders.filter(o => {
+            const oId = o.establishmentId || o.establishmentid || o.establishment_id;
+            return oId && String(oId).toLowerCase() === String(user.id).toLowerCase();
+          }).sort((a,b) => b.timestamp - a.timestamp)}
           showToast={showToast}
           setView={setView}
           formatCurrency={formatCurrency}
           setClientEstId={setClientEstId}
+          refreshMenus={fetchMenus}
+          refreshOrders={fetchOrders}
         />
       )}
 
       {view === 'client' && (
         <ClientView
           clientEstId={clientEstId}
-          menuItems={menuItems.filter(m => m.establishmentId === clientEstId)}
+          menuItems={menuItems.filter(m => {
+            const mId = m.establishmentId || m.establishmentid || m.establishment_id;
+            return mId && String(mId).toLowerCase() === String(clientEstId).toLowerCase();
+          })}
           setView={setView}
           showToast={showToast}
           formatCurrency={formatCurrency}
+          refreshOrders={fetchOrders}
         />
       )}
     </div>
@@ -382,7 +404,7 @@ function LandingView({ setView, setClientEstId }) {
 }
 
 // --- ADMIN VIEW ---
-function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, setView, formatCurrency, setClientEstId }) {
+function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, setView, formatCurrency, setClientEstId, refreshMenus, refreshOrders }) {
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 pb-20 md:pb-0">
       <header className="bg-white shadow-sm border-b border-slate-200 p-4 sticky top-0 z-10">
@@ -395,8 +417,8 @@ function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, 
       </header>
 
       <main className="flex-1 max-w-4xl mx-auto w-full p-4 md:p-6 mt-2">
-        {adminTab === 'pedidos' && <AdminOrders orders={orders} showToast={showToast} formatCurrency={formatCurrency} />}
-        {adminTab === 'cardapio' && <AdminMenu user={user} menuItems={menuItems} showToast={showToast} formatCurrency={formatCurrency} />}
+        {adminTab === 'pedidos' && <AdminOrders orders={orders} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
+        {adminTab === 'cardapio' && <AdminMenu user={user} menuItems={menuItems} showToast={showToast} formatCurrency={formatCurrency} refreshMenus={refreshMenus} />}
         {adminTab === 'qr' && <AdminQR user={user} showToast={showToast} setView={setView} setClientEstId={setClientEstId} />}
         {adminTab === 'historico' && <AdminHistory orders={orders} formatCurrency={formatCurrency} />}
       </main>
@@ -425,13 +447,16 @@ function NavButton({ active, onClick, icon, label, badge }) {
   );
 }
 
-function AdminOrders({ orders, showToast, formatCurrency }) {
+function AdminOrders({ orders, showToast, formatCurrency, refreshOrders }) {
   const updateOrderStatus = async (originalOrders, newStatus) => {
     try {
-      await Promise.all(originalOrders.map(order => supabase.from('clickbeach_orders').update({ status: newStatus }).eq('id', order.id)));
+      const results = await Promise.all(originalOrders.map(order => supabase.from('clickbeach_orders').update({ status: newStatus }).eq('id', order.id)));
+      const error = results.find(r => r.error)?.error;
+      if (error) throw error;
       showToast(`Comanda atualizada para ${newStatus}`);
+      if (refreshOrders) refreshOrders();
     } catch (error) {
-      showToast("Erro ao atualizar pedido.", "error");
+      showToast("Erro ao atualizar pedido: " + (error.message || "Erro desconhecido"), "error");
     }
   };
 
@@ -555,7 +580,7 @@ function AdminHistory({ orders, formatCurrency }) {
   );
 }
 
-function AdminMenu({ user, menuItems, showToast, formatCurrency }) {
+function AdminMenu({ user, menuItems, showToast, formatCurrency, refreshMenus }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: 'Bebidas' });
@@ -570,18 +595,46 @@ function AdminMenu({ user, menuItems, showToast, formatCurrency }) {
     e.preventDefault();
     if (!newItem.name || !newItem.price) return showToast("Preencha nome e preço", "error");
     try {
+      const formattedPrice = parseFloat(String(newItem.price).replace(',', '.'));
       if (editingId) {
-        await supabase.from('clickbeach_menu').update({ name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), category: newItem.category }).eq('id', editingId);
+        const { error } = await supabase.from('clickbeach_menu').update({ name: newItem.name, description: newItem.description, price: formattedPrice, category: newItem.category }).eq('id', editingId);
+        if (error) throw error;
         showToast("Item atualizado!");
       } else {
-        await supabase.from('clickbeach_menu').insert([{ establishmentId: user.id, name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), category: newItem.category, available: true }]);
+        const { data, error } = await supabase.from('clickbeach_menu').insert([{ establishmentId: user.id, name: newItem.name, description: newItem.description, price: formattedPrice, category: newItem.category, available: true }]).select();
+        if (error) throw error;
+        if (!data || data.length === 0) throw new Error("Item bloqueado para leitura (verifique RLS no banco).");
         showToast("Item adicionado!");
       }
+      if (refreshMenus) refreshMenus();
       setIsAdding(false);
       setEditingId(null);
       setNewItem({ name: '', description: '', price: '', category: 'Bebidas' });
     } catch (error) {
-      showToast("Erro ao salvar item", "error");
+      showToast("Erro ao salvar: " + (error.message || "Erro desconhecido"), "error");
+    }
+  };
+
+  const deleteItem = async (id) => {
+    try {
+      const { error } = await supabase.from('clickbeach_menu').delete().eq('id', id);
+      if (error) throw error;
+      showToast("Item removido");
+      if (refreshMenus) refreshMenus();
+    } catch (e) {
+      showToast("Erro ao remover: " + (e.message || "Erro desconhecido"), "error");
+    }
+  };
+
+  const toggleAvailability = async (item) => {
+    try {
+      const newStatus = !(item.available !== false);
+      const { error } = await supabase.from('clickbeach_menu').update({ available: newStatus }).eq('id', item.id);
+      if (error) throw error;
+      showToast(newStatus ? "Produto disponível" : "Produto indisponível");
+      if (refreshMenus) refreshMenus();
+    } catch (e) {
+      showToast("Erro ao atualizar: " + (e.message || "Erro desconhecido"), "error");
     }
   };
 
@@ -596,14 +649,14 @@ function AdminMenu({ user, menuItems, showToast, formatCurrency }) {
 
       {isAdding && (
         <form onSubmit={handleAddItem} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-          <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="w-full px-4 py-2 border rounded-xl" placeholder="Nome do Produto" required />
+          <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="w-full px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Nome do Produto" required />
           <div className="flex gap-4">
-            <input type="number" step="0.01" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl" placeholder="Preço" required />
-            <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl">
+            <input type="number" step="0.01" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Preço" required />
+            <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
               <option>Bebidas</option><option>Porções</option><option>Pratos</option><option>Sobremesas</option>
             </select>
           </div>
-          <input type="text" value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} className="w-full px-4 py-2 border rounded-xl" placeholder="Descrição (opcional)" />
+          <input type="text" value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} className="w-full px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Descrição (opcional)" />
           <button type="submit" className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl">Salvar Produto</button>
         </form>
       )}
@@ -618,15 +671,26 @@ function AdminMenu({ user, menuItems, showToast, formatCurrency }) {
                   <h3 className={`font-bold text-lg ${item.available === false ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{item.name}</h3>
                   <p className="text-emerald-600 font-bold mt-1 font-mono">{formatCurrency(item.price)}</p>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { setNewItem({name: item.name, description: item.description || '', price: item.price, category: item.category}); setEditingId(item.id); setIsAdding(true); }} className="text-blue-400 hover:text-blue-600 p-2"><Pencil size={20} /></button>
-                  <button onClick={async () => { await supabase.from('clickbeach_menu').delete().eq('id', item.id); showToast("Item removido"); }} className="text-red-400 hover:text-red-600 p-2"><Trash2 size={20} /></button>
+                <div className="flex flex-col gap-2 items-end">
+                  <button 
+                    onClick={() => toggleAvailability(item)}
+                    className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md transition-colors ${item.available !== false ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}
+                  >
+                    {item.available !== false ? 'Disponível' : 'Indisponível'}
+                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setNewItem({name: item.name, description: item.description || '', price: item.price, category: item.category}); setEditingId(item.id); setIsAdding(true); }} className="text-blue-400 hover:text-blue-600 p-2"><Pencil size={20} /></button>
+                    <button onClick={() => deleteItem(item.id)} className="text-red-400 hover:text-red-600 p-2"><Trash2 size={20} /></button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       ))}
+      {menuItems.length === 0 && !isAdding && (
+        <div className="text-center py-10 text-slate-500">Nenhum item no cardápio.</div>
+      )}
     </div>
   );
 }
@@ -651,7 +715,7 @@ function AdminQR({ user, showToast, setView, setClientEstId }) {
   );
 }
 
-function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency }) {
+function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency, refreshOrders }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const groupedItems = menuItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
@@ -665,27 +729,31 @@ function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency
         <button onClick={() => setView('landing')} className="bg-white/20 p-2 rounded-full"><X size={20} /></button>
       </header>
       <main className="max-w-xl mx-auto p-4 mt-4 space-y-8">
-        {Object.entries(groupedItems).map(([category, items]) => (
-          <div key={category}>
-            <h2 className="text-xl font-bold text-slate-800 border-b-2 border-orange-200 pb-2 mb-4">{category}</h2>
-            <div className="grid gap-4">
-              {items.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                  <div className="flex-1 pr-4"><h3 className={`font-bold ${item.available === false ? 'text-slate-400' : 'text-slate-800'}`}>{item.name}</h3><p className="text-emerald-600 font-bold font-mono mt-1">{formatCurrency(item.price)}</p></div>
-                  <button onClick={() => { setCart(prev => { const ex = prev.find(i => i.id === item.id); if (ex) return prev.map(i => i.id === item.id ? {...i, quantity: i.quantity+1} : i); return [...prev, {...item, quantity: 1}]; }); showToast("Adicionado!"); }} disabled={item.available === false} className={`p-3 rounded-xl shadow-sm ${item.available === false ? 'bg-slate-100 text-slate-300' : 'bg-orange-100 text-orange-600'}`}><Plus size={20} /></button>
-                </div>
-              ))}
+        {Object.entries(groupedItems).length === 0 ? (
+          <div className="text-center py-20 text-slate-400">Cardápio ainda não configurado.</div>
+        ) : (
+          Object.entries(groupedItems).map(([category, items]) => (
+            <div key={category}>
+              <h2 className="text-xl font-bold text-slate-800 border-b-2 border-orange-200 pb-2 mb-4">{category}</h2>
+              <div className="grid gap-4">
+                {items.map(item => (
+                  <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div className="flex-1 pr-4"><h3 className={`font-bold ${item.available === false ? 'text-slate-400' : 'text-slate-800'}`}>{item.name}</h3><p className="text-emerald-600 font-bold font-mono mt-1">{formatCurrency(item.price)}</p></div>
+                    <button onClick={() => { setCart(prev => { const ex = prev.find(i => i.id === item.id); if (ex) return prev.map(i => i.id === item.id ? {...i, quantity: i.quantity+1} : i); return [...prev, {...item, quantity: 1}]; }); showToast("Adicionado!"); }} disabled={item.available === false} className={`p-3 rounded-xl shadow-sm ${item.available === false ? 'bg-slate-100 text-slate-300' : 'bg-orange-100 text-orange-600'}`}><Plus size={20} /></button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </main>
       {cartCount > 0 && !isCartOpen && <button onClick={() => setIsCartOpen(true)} className="fixed bottom-6 right-6 bg-orange-500 text-white p-4 rounded-full shadow-xl flex items-center gap-3 z-40 animate-bounce"><ShoppingCart size={24} /><span className="font-bold">{cartCount}</span></button>}
-      {isCartOpen && <CartModal cart={cart} cartTotal={cartTotal} close={() => setIsCartOpen(false)} updateQuantity={(id, d) => setCart(p => p.map(i => i.id === id ? {...i, quantity: i.quantity+d} : i).filter(i => i.quantity > 0))} clientEstId={clientEstId} setCart={setCart} showToast={showToast} formatCurrency={formatCurrency} />}
+      {isCartOpen && <CartModal cart={cart} cartTotal={cartTotal} close={() => setIsCartOpen(false)} updateQuantity={(id, d) => setCart(p => p.map(i => i.id === id ? {...i, quantity: i.quantity+d} : i).filter(i => i.quantity > 0))} clientEstId={clientEstId} setCart={setCart} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
     </div>
   );
 }
 
-function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCart, showToast, formatCurrency }) {
+function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCart, showToast, formatCurrency, refreshOrders }) {
   const [customerName, setCustomerName] = useState('');
   const [location, setLocation] = useState('');
   const [phone, setPhone] = useState('');
@@ -696,11 +764,15 @@ function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCar
     if (!customerName || !location || !phone) return showToast("Preencha todos os campos", "error");
     setSubmitting(true);
     try {
-      await supabase.from('clickbeach_orders').insert([{ establishmentId: clientEstId, customerName, location, phone, items: cart, total: cartTotal, status: 'Novo', timestamp: Date.now() }]);
+      const { error } = await supabase.from('clickbeach_orders').insert([{ establishmentId: clientEstId, customerName, location, phone, items: cart, total: cartTotal, status: 'Novo', timestamp: Date.now() }]);
+      if (error) throw error;
       showToast("Pedido enviado!");
+      if (refreshOrders) refreshOrders();
       setCart([]);
       close();
-    } catch (e) { showToast("Erro ao enviar", "error"); }
+    } catch (e) { 
+      showToast("Erro ao enviar: " + (e.message || "Verifique o banco de dados"), "error"); 
+    }
     finally { setSubmitting(false); }
   };
 

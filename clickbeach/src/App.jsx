@@ -11,18 +11,20 @@ const KioskIcon = ({ size = 24, className = "" }) => (
     height={size} 
     viewBox="0 0 24 24" 
     fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
+    xmlns="http://www.w3.org/2000/svg"
     className={className}
   >
-    <path d="M12 22c0-4-1-7-1-10" />
-    <path d="M11 12c-2-1-5-1-7 1" />
-    <path d="M11 12c1-3 1-6-1-8" />
-    <path d="M11 12c2-2 5-2 7 0" />
-    <path d="M11 12c1 2 4 4 7 3" />
-    <path d="M11 12c-1 2-4 4-7 3" />
+    <circle cx="12" cy="11" r="7" fill="#FBBF24" />
+    <rect x="11" y="9" width="9" height="12" rx="1.5" fill="white" stroke="#0F172A" strokeWidth="1.5" />
+    <path d="M13 13 C 13 11, 18 11, 18 13 Z" fill="#0F172A" />
+    <circle cx="13.5" cy="15.5" r="0.5" fill="#0F172A" />
+    <line x1="15" y1="15.5" x2="18" y2="15.5" stroke="#0F172A" strokeWidth="1" strokeLinecap="round" />
+    <circle cx="13.5" cy="17.5" r="0.5" fill="#0F172A" />
+    <line x1="15" y1="17.5" x2="18" y2="17.5" stroke="#0F172A" strokeWidth="1" strokeLinecap="round" />
+    <path d="M7 18 Q 8 14 7 10" stroke="#0F172A" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+    <path d="M7 10 Q 5 8 3 10 M7 10 Q 7 6 5 5 M7 10 Q 9 6 11 7 M7 10 Q 11 9 12 12" stroke="#0F172A" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+    <path d="M2 18 Q 6 15 10 18 T 18 18" stroke="#06B6D4" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+    <path d="M4 21 Q 8 18 12 21 T 20 21" stroke="#0891B2" strokeWidth="1.5" fill="none" strokeLinecap="round" />
   </svg>
 );
 
@@ -111,7 +113,7 @@ function App() {
         background_color: "#fff7ed",
         theme_color: "#ea580c",
         icons: [{
-          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23ea580c'/%3E%3Cpath d='M12 22c0-4-1-7-1-10M11 12c-2-1-5-1-7 1M11 12c1-3 1-6-1-8M11 12c2-2 5-2 7 0M11 12c1 2 4 4 7 3M11 12c-1 2-4 4-7 3' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='12' cy='11' r='7' fill='%23FBBF24' /%3E%3Crect x='11' y='9' width='9' height='12' rx='1.5' fill='white' stroke='%230F172A' stroke-width='1.5' /%3E%3Cpath d='M13 13 C 13 11, 18 11, 18 13 Z' fill='%230F172A' /%3E%3Ccircle cx='13.5' cy='15.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='15.5' x2='18' y2='15.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Ccircle cx='13.5' cy='17.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='17.5' x2='18' y2='17.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Cpath d='M7 18 Q 8 14 7 10' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M7 10 Q 5 8 3 10 M7 10 Q 7 6 5 5 M7 10 Q 9 6 11 7 M7 10 Q 11 9 12 12' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M2 18 Q 6 15 10 18 T 18 18' stroke='%2306B6D4' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M4 21 Q 8 18 12 21 T 20 21' stroke='%230891B2' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3C/svg%3E",
           sizes: "192x192",
           type: "image/svg+xml",
           purpose: "any maskable"
@@ -733,6 +735,29 @@ function AdminQR({ user, showToast, setView, setClientEstId }) {
   const clientLink = `${baseUrl}?kiosque=${user.id}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(clientLink)}&color=ea580c`;
 
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Imprimir QR Code</title>
+          <style>
+            body { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; text-align: center; }
+            img { width: 300px; height: 300px; margin-bottom: 20px; }
+            h1 { color: #ea580c; margin-bottom: 10px; font-size: 32px; }
+            p { color: #475569; font-size: 18px; }
+          </style>
+        </head>
+        <body>
+          <h1>Cardápio Digital</h1>
+          <p>Escaneie o código abaixo para ver o nosso cardápio e fazer seu pedido.</p>
+          <img src="${qrUrl}" onload="window.print();window.close()" />
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   return (
     <div className="flex flex-col items-center justify-center py-10 space-y-8 text-center">
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
@@ -741,6 +766,7 @@ function AdminQR({ user, showToast, setView, setClientEstId }) {
         <div className="space-y-4">
           <div className="bg-slate-100 px-4 py-3 rounded-xl font-mono text-xs text-slate-800 break-all">{user.id}</div>
           <button onClick={() => { const el = document.createElement('textarea'); el.value = clientLink; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); showToast("Link copiado!"); }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-medium">Copiar Link</button>
+          <button onClick={handlePrint} className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium shadow-md">Imprimir QR Code</button>
           <button onClick={() => { setClientEstId(user.id); setView('client'); }} className="w-full bg-cyan-600 text-white py-3 rounded-xl font-medium shadow-md">Simular Cliente</button>
         </div>
       </div>

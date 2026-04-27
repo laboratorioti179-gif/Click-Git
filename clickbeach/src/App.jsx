@@ -113,8 +113,8 @@ function App() {
         background_color: "#fff7ed",
         theme_color: "#ea580c",
         icons: [{
-          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='12' cy='11' r='7' fill='%23FBBF24' /%3E%3Crect x='11' y='9' width='9' height='12' rx='1.5' fill='white' stroke='%230F172A' stroke-width='1.5' /%3E%3Cpath d='M13 13 C 13 11, 18 11, 18 13 Z' fill='%230F172A' /%3E%3Ccircle cx='13.5' cy='15.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='15.5' x2='18' y2='15.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Ccircle cx='13.5' cy='17.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='17.5' x2='18' y2='17.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Cpath d='M7 18 Q 8 14 7 10' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M7 10 Q 5 8 3 10 M7 10 Q 7 6 5 5 M7 10 Q 9 6 11 7 M7 10 Q 11 9 12 12' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M2 18 Q 6 15 10 18 T 18 18' stroke='%2306B6D4' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M4 21 Q 8 18 12 21 T 20 21' stroke='%230891B2' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3C/svg%3E",
-          sizes: "192x192",
+          src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='12' cy='11' r='7' fill='%23FBBF24' /%3E%3Crect x='11' y='9' width='9' height='12' rx='1.5' fill='white' stroke='%230F172A' stroke-width='1.5' /%3E%3Cpath d='M13 13 C 13 11, 18 11, 18 13 Z' fill='%230F172A' /%3E%3Ccircle cx='13.5' cy='15.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='15.5' x2='18' y2='15.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Ccircle cx='13.5' cy='17.5' r='0.5' fill='%230F172A' /%3E%3Cline x1='15' y1='17.5' x2='18' y2='17.5' stroke='%230F172A' stroke-width='1' stroke-linecap='round' /%3E%3Cpath d='M7 18 Q 8 14 7 10' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M7 10 Q 5 8 3 10 M7 10 Q 7 6 5 5 M7 10 Q 9 6 11 7 M7 10 Q 11 9 12 12' stroke='%230F172A' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M2 18 Q 6 15 10 18 T 18 18' stroke='%2306B6D4' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3Cpath d='M4 21 Q 8 18 12 21 T 20 21' stroke='%230891B2' stroke-width='1.5' fill='none' stroke-linecap='round' /%3E%3C/svg%3E",
+          sizes: "512x512 any",
           type: "image/svg+xml",
           purpose: "any maskable"
         }]
@@ -134,6 +134,14 @@ function App() {
         meta.name = 'apple-mobile-web-app-capable';
         meta.content = 'yes';
         document.head.appendChild(meta);
+      }
+
+      let appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+      if (!appleIcon) {
+        appleIcon = document.createElement('link');
+        appleIcon.rel = 'apple-touch-icon';
+        appleIcon.href = manifest.icons[0].src;
+        document.head.appendChild(appleIcon);
       }
 
       if ('serviceWorker' in navigator) {

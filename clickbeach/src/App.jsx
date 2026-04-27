@@ -851,44 +851,10 @@ function AdminQR({ user, showToast, setView, setClientEstId }) {
 function AdminSubscription({ user, showToast }) {
   const assinaturaExpiraEm = user?.user_metadata?.assinatura_expira_em;
   const isExpired = assinaturaExpiraEm ? Date.now() > assinaturaExpiraEm : false;
-  const [pixCode, setPixCode] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const handleGeneratePix = async () => {
-    setLoading(true);
-    showToast("Comunicando com o N8N...");
-    try {
-      // --- CONFIGURAÇÃO N8N AQUI ---
-      // Descomente o código abaixo e insira a URL do seu Webhook do N8N
-      /*
-      const response = await fetch('SUA_URL_DO_WEBHOOK_N8N_AQUI', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, email: user.email })
-      });
-      const data = await response.json();
-      setPixCode(data.pixCopiaECola);
-      */
-
-      // Simulação de retorno do N8N (remover ao ligar o webhook real)
-      setTimeout(() => {
-        setPixCode('00020101021126580014br.gov.bcb.pix0136n8n-simulacao-pix-copia-e-cola');
-        setLoading(false);
-      }, 1500);
-    } catch (e) {
-      showToast("Erro ao conectar com N8N", "error");
-      setLoading(false);
-    }
-  };
-
-  const copyPix = () => {
-    const el = document.createElement('textarea');
-    el.value = pixCode;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    showToast("PIX copiado!");
+  const handleStripeCheckout = () => {
+    showToast("Redirecionando para o pagamento seguro...");
+    window.location.href = `https://buy.stripe.com/fZu28j8tG3lR5C13fsgIo02?client_reference_id=${user.id}`;
   };
 
   const handleCheckPayment = async () => {
@@ -918,26 +884,16 @@ function AdminSubscription({ user, showToast }) {
               Sua assinatura expirou! Renove agora para continuar usando o sistema.
             </div>
           )}
-          <p className="text-slate-600">Renove sua assinatura via PIX. A liberação será feita automaticamente pelo sistema após o pagamento.</p>
+          <p className="text-slate-600">Renove sua assinatura de forma segura pelo Stripe. A liberação será automática após o pagamento.</p>
           
-          {!pixCode ? (
-            <button onClick={handleGeneratePix} disabled={loading} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium shadow-md">
-              {loading ? 'Gerando...' : 'Gerar PIX de Assinatura'}
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <div className="bg-slate-100 p-3 rounded-xl break-all text-xs text-slate-800 font-mono">
-                {pixCode}
-              </div>
-              <button onClick={copyPix} className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium shadow-md">
-                Copiar PIX Copia e Cola
-              </button>
-              <button onClick={handleCheckPayment} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-medium shadow-md">
-                Já paguei! Verificar Liberação
-              </button>
-              <p className="text-xs text-slate-500">Após o pagamento, o N8N processará e renovará sua conta automaticamente.</p>
-            </div>
-          )}
+          <button onClick={handleStripeCheckout} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium shadow-md mb-3">
+            Gerenciar Assinatura
+          </button>
+
+          <button onClick={handleCheckPayment} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-medium shadow-md">
+            Já paguei! Verificar Liberação
+          </button>
+          <p className="text-xs text-slate-500 mt-2">Após o pagamento, nosso sistema processará o webhook e renovará sua conta para +30 dias automaticamente.</p>
         </div>
       </div>
     </div>

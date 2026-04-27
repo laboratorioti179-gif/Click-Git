@@ -182,22 +182,26 @@ function App() {
     }
   }, []);
 
-  // --- DATA FETCHING (POLLING INSTEAD OF REALTIME) ---
+  // --- DATA FETCHING (POLLING COM FILTRO OTIMIZADO) ---
   const fetchMenus = useCallback(async () => {
     if (!supabase) return;
+    const targetId = view === 'client' ? clientEstId : user?.id;
+    if (!targetId) return;
     try {
-      const { data, error } = await supabase.from('clickbeach_menu').select('*');
+      const { data, error } = await supabase.from('clickbeach_menu').select('*').eq('establishmentId', targetId);
       if (error) console.error(error);
       if (data) setMenuItems(data);
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [user, view, clientEstId]);
 
   const fetchOrders = useCallback(async () => {
     if (!supabase) return;
+    const targetId = view === 'client' ? clientEstId : user?.id;
+    if (!targetId) return;
     try {
-      const { data, error } = await supabase.from('clickbeach_orders').select('*');
+      const { data, error } = await supabase.from('clickbeach_orders').select('*').eq('establishmentId', targetId);
       if (error) console.error(error);
       if (data) {
         if (user && view === 'admin' && previousOrdersRef.current.length > 0) {
@@ -213,22 +217,27 @@ function App() {
     } catch (e) {
       console.error(e);
     }
-  }, [user, view, showToast]);
+  }, [user, view, clientEstId, showToast]);
 
   useEffect(() => {
     if (!user && view !== 'client') return;
+    const targetId = view === 'client' ? clientEstId : user?.id;
+    if (!targetId) return;
     
     fetchMenus();
     fetchOrders();
 
-    // WebSockets are not allowed in this environment, using polling
-    const interval = setInterval(() => {
+    // Como WebSockets (Realtime) são bloqueados no ambiente de preview (Canvas),
+    // utilizamos setInterval (polling) mantendo o banco de dados otimizado com os filtros (.eq).
+    const intervalId = setInterval(() => {
       fetchMenus();
       fetchOrders();
     }, 5000);
 
-    return () => clearInterval(interval);
-  }, [user, view, fetchMenus, fetchOrders]);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user, view, clientEstId, fetchMenus, fetchOrders]);
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -884,6 +893,22 @@ function AdminSubscription({ user, showToast }) {
               Sua assinatura expirou! Renove agora para continuar usando o sistema.
             </div>
           )}
+          
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-2 text-left">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-500">Status atual:</span>
+              <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${isExpired ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                {isExpired ? 'Expirado' : 'Ativo'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-500">Válido até:</span>
+              <span className="text-sm font-bold text-slate-800">
+                {assinaturaExpiraEm ? new Date(assinaturaExpiraEm).toLocaleDateString('pt-BR') : '--'}
+              </span>
+            </div>
+          </div>
+
           <p className="text-slate-600">Renove sua assinatura de forma segura pelo Stripe. A liberação será automática após o pagamento.</p>
           
           <button onClick={handleStripeCheckout} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium shadow-md mb-3">

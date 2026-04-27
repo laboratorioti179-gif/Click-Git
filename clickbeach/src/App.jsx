@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Menu, QrCode, ClipboardList, Plus, Trash2, ShoppingCart, 
-  ChevronRight, CheckCircle2, Clock, X, Info, Store, User, Copy, History, Pencil
+  ChevronRight, CheckCircle2, Clock, X, Info, Store, User, Copy, History, Pencil, CreditCard
 } from 'lucide-react';
 
 // --- ICONE DE QUIOSQUE CUSTOMIZADO ---
@@ -41,19 +41,28 @@ export default function AppWrapper() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // Carrega Supabase
     if (window.supabase) {
       if (!supabase) supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       setIsLoaded(true);
-      return;
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        setIsLoaded(true);
+      };
+      document.head.appendChild(script);
     }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-    script.crossOrigin = 'anonymous';
-    script.onload = () => {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      setIsLoaded(true);
-    };
-    document.head.appendChild(script);
+
+    // Carrega Stripe.js
+    if (!document.querySelector('script[src="https://js.stripe.com/v3/"]')) {
+      const stripeScript = document.createElement('script');
+      stripeScript.src = 'https://js.stripe.com/v3/';
+      stripeScript.crossOrigin = 'anonymous';
+      document.head.appendChild(stripeScript);
+    }
   }, []);
 
   if (!isLoaded) {
@@ -86,8 +95,11 @@ function App() {
       setLoadingAuth(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') {
+        setView('update_password');
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -242,6 +254,8 @@ function App() {
 
       {view === 'landing' && <LandingView setView={setView} setClientEstId={setClientEstId} />}
       
+      {view === 'update_password' && <UpdatePasswordView setView={setView} showToast={showToast} />}
+
       {view === 'admin' && (
         <AdminView 
           user={user}
@@ -285,6 +299,39 @@ function App() {
 // VIEWS
 // ==========================================
 
+function UpdatePasswordView({ setView, showToast }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!newPassword) return showToast("Digite a nova senha", "error");
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setLoading(false);
+    if (error) {
+      showToast(error.message, "error");
+    } else {
+      showToast("Senha atualizada com sucesso!");
+      setView('admin');
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gradient-to-br from-orange-100 to-cyan-100">
+      <div className="max-w-md w-full bg-white/80 backdrop-blur-md p-8 rounded-3xl shadow-xl text-center">
+        <h2 className="text-2xl font-bold text-slate-800 mb-6">Criar Nova Senha</h2>
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <input type="password" placeholder="Nova senha" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500" required />
+          <button type="submit" disabled={loading} className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl shadow-md">
+            {loading ? 'Salvando...' : 'Salvar Nova Senha'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function LandingView({ setView, setClientEstId }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
@@ -326,7 +373,8 @@ function LandingView({ setView, setClientEstId }) {
               nome_completo: fullName,
               documento: documentId,
               celular: phone,
-              cidade_estado: cityState
+              cidade_estado: cityState,
+              assinatura_expira_em: Date.now() + (7 * 24 * 60 * 60 * 1000)
             }
           }
         });
@@ -444,6 +492,22 @@ function LandingView({ setView, setClientEstId }) {
 // --- ADMIN VIEW ---
 function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, setView, formatCurrency, setClientEstId, refreshMenus, refreshOrders }) {
   const firstName = user?.user_metadata?.nome_completo?.split(' ')[0] || 'Estabelecimento';
+  const assinaturaExpiraEm = user?.user_metadata?.assinatura_expira_em;
+  const isExpired = assinaturaExpiraEm ? Date.now() > assinaturaExpiraEm : false;
+
+  useEffect(() => {
+    if (isExpired && adminTab !== 'assinatura') {
+      setAdminTab('assinatura');
+    }
+  }, [isExpired, adminTab, setAdminTab]);
+
+  const handleTabChange = (tab) => {
+    if (isExpired && tab !== 'assinatura') {
+      showToast("Sua assinatura expirou. Renove para acessar o painel.", "error");
+      return;
+    }
+    setAdminTab(tab);
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 pb-20 md:pb-0">
@@ -463,14 +527,16 @@ function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, 
         {adminTab === 'pedidos' && <AdminOrders orders={orders} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
         {adminTab === 'cardapio' && <AdminMenu user={user} menuItems={menuItems} showToast={showToast} formatCurrency={formatCurrency} refreshMenus={refreshMenus} />}
         {adminTab === 'qr' && <AdminQR user={user} showToast={showToast} setView={setView} setClientEstId={setClientEstId} />}
+        {adminTab === 'assinatura' && <AdminSubscription user={user} showToast={showToast} />}
         {adminTab === 'historico' && <AdminHistory orders={orders} formatCurrency={formatCurrency} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 md:relative md:border-t-0 md:bg-transparent md:justify-center md:gap-4 md:p-4">
-        <NavButton active={adminTab === 'pedidos'} onClick={() => setAdminTab('pedidos')} icon={<ClipboardList />} label="Pedidos" badge={orders.filter(o => o.status === 'Novo').length} />
-        <NavButton active={adminTab === 'cardapio'} onClick={() => setAdminTab('cardapio')} icon={<Menu />} label="Cardápio" />
-        <NavButton active={adminTab === 'qr'} onClick={() => setAdminTab('qr')} icon={<QrCode />} label="QR Code" />
-        <NavButton active={adminTab === 'historico'} onClick={() => setAdminTab('historico')} icon={<History />} label="Histórico" />
+        <NavButton active={adminTab === 'pedidos'} onClick={() => handleTabChange('pedidos')} icon={<ClipboardList />} label="Pedidos" badge={orders.filter(o => o.status === 'Novo').length} />
+        <NavButton active={adminTab === 'cardapio'} onClick={() => handleTabChange('cardapio')} icon={<Menu />} label="Cardápio" />
+        <NavButton active={adminTab === 'qr'} onClick={() => handleTabChange('qr')} icon={<QrCode />} label="QR Code" />
+        <NavButton active={adminTab === 'assinatura'} onClick={() => handleTabChange('assinatura')} icon={<CreditCard />} label="Assinatura" />
+        <NavButton active={adminTab === 'historico'} onClick={() => handleTabChange('historico')} icon={<History />} label="Histórico" />
       </nav>
     </div>
   );
@@ -782,6 +848,102 @@ function AdminQR({ user, showToast, setView, setClientEstId }) {
   );
 }
 
+function AdminSubscription({ user, showToast }) {
+  const assinaturaExpiraEm = user?.user_metadata?.assinatura_expira_em;
+  const isExpired = assinaturaExpiraEm ? Date.now() > assinaturaExpiraEm : false;
+  const [pixCode, setPixCode] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleGeneratePix = async () => {
+    setLoading(true);
+    showToast("Comunicando com o N8N...");
+    try {
+      // --- CONFIGURAÇÃO N8N AQUI ---
+      // Descomente o código abaixo e insira a URL do seu Webhook do N8N
+      /*
+      const response = await fetch('SUA_URL_DO_WEBHOOK_N8N_AQUI', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, email: user.email })
+      });
+      const data = await response.json();
+      setPixCode(data.pixCopiaECola);
+      */
+
+      // Simulação de retorno do N8N (remover ao ligar o webhook real)
+      setTimeout(() => {
+        setPixCode('00020101021126580014br.gov.bcb.pix0136n8n-simulacao-pix-copia-e-cola');
+        setLoading(false);
+      }, 1500);
+    } catch (e) {
+      showToast("Erro ao conectar com N8N", "error");
+      setLoading(false);
+    }
+  };
+
+  const copyPix = () => {
+    const el = document.createElement('textarea');
+    el.value = pixCode;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast("PIX copiado!");
+  };
+
+  const handleCheckPayment = async () => {
+    showToast("Verificando pagamento...");
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) return showToast("Erro ao verificar", "error");
+    
+    const novaExpiracao = data?.session?.user?.user_metadata?.assinatura_expira_em;
+    if (novaExpiracao && novaExpiracao > Date.now()) {
+      showToast("Pagamento confirmado! Assinatura renovada.");
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      showToast("Pagamento não identificado ainda. Aguarde uns instantes.", "error");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center py-10 space-y-8 text-center">
+      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Assinatura</h2>
+        <div className="bg-indigo-50 p-4 rounded-2xl inline-block shadow-inner mb-6 text-indigo-500">
+          <CreditCard size={64} />
+        </div>
+        <div className="space-y-4">
+          {isExpired && (
+            <div className="bg-red-100 text-red-600 p-3 rounded-xl font-bold text-sm">
+              Sua assinatura expirou! Renove agora para continuar usando o sistema.
+            </div>
+          )}
+          <p className="text-slate-600">Renove sua assinatura via PIX. A liberação será feita automaticamente pelo sistema após o pagamento.</p>
+          
+          {!pixCode ? (
+            <button onClick={handleGeneratePix} disabled={loading} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-medium shadow-md">
+              {loading ? 'Gerando...' : 'Gerar PIX de Assinatura'}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-slate-100 p-3 rounded-xl break-all text-xs text-slate-800 font-mono">
+                {pixCode}
+              </div>
+              <button onClick={copyPix} className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium shadow-md">
+                Copiar PIX Copia e Cola
+              </button>
+              <button onClick={handleCheckPayment} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-medium shadow-md">
+                Já paguei! Verificar Liberação
+              </button>
+              <p className="text-xs text-slate-500">Após o pagamento, o N8N processará e renovará sua conta automaticamente.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency, refreshOrders }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -843,6 +1005,44 @@ function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCar
     finally { setSubmitting(false); }
   };
 
+  const handleStripePayment = async (e) => {
+    e.preventDefault();
+    if (!customerName || !location || !phone) return showToast("Preencha todos os campos", "error");
+    setSubmitting(true);
+    try {
+      // Registra o pedido no Supabase como pendente de pagamento online
+      const { error } = await supabase.from('clickbeach_orders').insert([{ establishmentId: clientEstId, customerName, location, phone, items: cart, total: cartTotal, status: 'Pagamento Pendente', timestamp: Date.now() }]);
+      if (error) throw error;
+      
+      showToast("Redirecionando para pagamento seguro via Stripe...");
+      
+      if (window.Stripe) {
+        // --- CONFIGURAÇÃO STRIPE AQUI ---
+        // Descomente o código abaixo e adicione sua Public Key quando tiver um backend ou Link configurado
+        // const stripe = window.Stripe('pk_test_sua_chave_publica');
+        
+        /* await stripe.redirectToCheckout({
+          lineItems: [{ price: 'price_seu_id_de_produto', quantity: 1 }],
+          mode: 'payment',
+          successUrl: window.location.href + '&pagamento=sucesso',
+          cancelUrl: window.location.href,
+        });
+        */
+
+        // Simulação do redirecionamento
+        setTimeout(() => {
+          showToast("Pedido salvo! (Insira sua API Key do Stripe no código para checkout real)");
+          if (refreshOrders) refreshOrders();
+          setCart([]);
+          close();
+        }, 2500);
+      }
+    } catch (e) { 
+      showToast("Erro de conexão com o Stripe: " + (e.message || "Verifique a configuração"), "error"); 
+    }
+    finally { setSubmitting(false); }
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end">
       <div className="bg-white w-full max-w-md h-full flex flex-col shadow-2xl animate-slide-in p-6">
@@ -865,7 +1065,10 @@ function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCar
             <input type="text" placeholder="Seu Nome" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-3 border rounded-xl" required />
             <input type="text" placeholder="Mesa / Guarda-sol" value={location} onChange={e => setLocation(e.target.value)} className="w-full p-3 border rounded-xl" required />
             <input type="tel" placeholder="Telefone" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 border rounded-xl" required />
-            <button type="submit" disabled={submitting} className="w-full bg-orange-500 text-white font-bold py-4 rounded-xl shadow-lg">{submitting ? 'Enviando...' : 'Confirmar Pedido'}</button>
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={submitting} className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl shadow-lg">{submitting ? 'Aguarde...' : 'Pagar na Mesa'}</button>
+              <button type="button" onClick={handleStripePayment} disabled={submitting} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg">Pagar com Stripe</button>
+            </div>
           </form>
         </div>
       </div>

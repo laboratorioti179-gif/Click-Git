@@ -863,7 +863,7 @@ function AdminSubscription({ user, showToast }) {
 
   const handleStripeCheckout = () => {
     showToast("Redirecionando para o pagamento seguro...");
-    window.location.href = `https://buy.stripe.com/fZu28j8tG3lR5C13fsgIo02?client_reference_id=${user.id}`;
+    window.open(`https://buy.stripe.com/fZu28j8tG3lR5C13fsgIo02?client_reference_id=${user.id}`, '_blank');
   };
 
   const handleCheckPayment = async () => {

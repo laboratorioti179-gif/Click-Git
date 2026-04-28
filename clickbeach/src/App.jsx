@@ -4,6 +4,10 @@ import {
   ChevronRight, CheckCircle2, Clock, X, Info, Store, User, Copy, History, Pencil, CreditCard
 } from 'lucide-react';
 
+// --- CONFIGURAÇÕES GERAIS ---
+// Para mudar o preço da assinatura, crie um novo "Payment Link" no Stripe e cole o link abaixo:
+const STRIPE_CHECKOUT_URL = "https://buy.stripe.com/fZu28j8tG3lR5C13fsgIo02";
+
 // --- ICONE DE QUIOSQUE CUSTOMIZADO ---
 const KioskIcon = ({ size = 24, className = "" }) => (
   <svg 
@@ -280,7 +284,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-orange-50 text-slate-800 font-sans selection:bg-orange-200">
+    <div translate="no" className="min-h-screen bg-orange-50 text-slate-800 font-sans selection:bg-orange-200">
       {toast && (
         <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 text-white font-medium transition-all ${
           toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'
@@ -962,7 +966,7 @@ function AdminSubscription({ user, showToast }) {
 
   const handleStripeCheckout = () => {
     showToast("Redirecionando para o pagamento seguro...");
-    window.open(`https://buy.stripe.com/fZu28j8tG3lR5C13fsgIo02?client_reference_id=${user.id}`, '_blank');
+    window.open(`${STRIPE_CHECKOUT_URL}?client_reference_id=${user.id}`, '_blank');
   };
 
   const handleCheckPayment = async () => {
@@ -1098,7 +1102,7 @@ function CartModal({ cart, cartTotal, estSettings, close, updateQuantity, client
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end">
-      <div className="bg-white w-full max-w-md h-full flex flex-col shadow-2xl animate-slide-in p-6">
+      <div className="bg-white w-full max-md h-full flex flex-col shadow-2xl animate-slide-in p-6">
         <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-orange-800">Seu Pedido</h2><button onClick={close}><X size={24}/></button></div>
         <div className="flex-1 overflow-y-auto space-y-4">
           {cart.map(item => (

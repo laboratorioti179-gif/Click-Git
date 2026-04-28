@@ -81,11 +81,13 @@ function App() {
   const [view, setView] = useState('landing'); 
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [estSettings, setEstSettings] = useState({ tableFeeActive: false, tableFeeValue: 0 });
   const [adminTab, setAdminTab] = useState('pedidos');
   const [clientEstId, setClientEstId] = useState('');
   const [toast, setToast] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const previousOrdersRef = useRef([]);
+  const subWarnedRef = useRef(false);
 
   // --- AUTH ---
   useEffect(() => {
@@ -165,11 +167,11 @@ function App() {
     setupPWA();
   }, []);
 
-  const showToast = useCallback((msg, type = 'info') => {
+  const showToast = useCallback((msg, type = 'info', forcePush = false) => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
 
-    if (typeof Notification !== 'undefined') {
+    if (forcePush && typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted') {
         new Notification('Click Beach', { body: msg });
       } else if (Notification.permission !== 'denied') {
@@ -183,6 +185,17 @@ function App() {
   }, []);
 
   // --- DATA FETCHING (POLLING COM FILTRO OTIMIZADO) ---
+  const fetchSettings = useCallback(async () => {
+    if (!supabase) return;
+    const targetId = view === 'client' ? clientEstId : user?.id;
+    if (!targetId) return;
+    try {
+      const { data, error } = await supabase.from('clickbeach_settings').select('*').eq('establishmentId', targetId).maybeSingle();
+      if (error) console.error(error);
+      if (data) setEstSettings({ tableFeeActive: data.tableFeeActive, tableFeeValue: data.tableFeeValue });
+    } catch (e) { console.error(e); }
+  }, [user, view, clientEstId]);
+
   const fetchMenus = useCallback(async () => {
     if (!supabase) return;
     const targetId = view === 'client' ? clientEstId : user?.id;
@@ -208,7 +221,7 @@ function App() {
           const currentIds = previousOrdersRef.current.map(o => o.id);
           const newOrders = data.filter(o => !currentIds.includes(o.id) && String(o.establishmentId || o.establishmentid || o.establishment_id).toLowerCase() === String(user.id).toLowerCase());
           if (newOrders.length > 0) {
-            showToast("Novo pedido recebido!");
+            showToast("Novo pedido recebido!", "info", true);
           }
         }
         previousOrdersRef.current = data;
@@ -224,12 +237,12 @@ function App() {
     const targetId = view === 'client' ? clientEstId : user?.id;
     if (!targetId) return;
     
+    fetchSettings();
     fetchMenus();
     fetchOrders();
 
-    // Como WebSockets (Realtime) são bloqueados no ambiente de preview (Canvas),
-    // utilizamos setInterval (polling) mantendo o banco de dados otimizado com os filtros (.eq).
     const intervalId = setInterval(() => {
+      fetchSettings();
       fetchMenus();
       fetchOrders();
     }, 5000);
@@ -237,7 +250,22 @@ function App() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [user, view, clientEstId, fetchMenus, fetchOrders]);
+  }, [user, view, clientEstId, fetchMenus, fetchOrders, fetchSettings]);
+
+  // Alerta de vencimento da assinatura (3 dias)
+  useEffect(() => {
+    if (!user || subWarnedRef.current) return;
+    const expiry = user?.user_metadata?.assinatura_expira_em;
+    if (!expiry) return;
+    
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    const diff = expiry - Date.now();
+    
+    if (diff > 0 && diff <= threeDaysMs) {
+      showToast("Sua assinatura vence em menos de 3 dias! Renove para evitar bloqueios.", "error", true);
+      subWarnedRef.current = true;
+    }
+  }, [user, showToast]);
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -278,12 +306,15 @@ function App() {
             const oId = o.establishmentId || o.establishmentid || o.establishment_id;
             return oId && String(oId).toLowerCase() === String(user.id).toLowerCase();
           }).sort((a,b) => b.timestamp - a.timestamp)}
+          estSettings={estSettings}
+          setEstSettings={setEstSettings}
           showToast={showToast}
           setView={setView}
           formatCurrency={formatCurrency}
           setClientEstId={setClientEstId}
           refreshMenus={fetchMenus}
           refreshOrders={fetchOrders}
+          refreshSettings={fetchSettings}
         />
       )}
 
@@ -294,6 +325,7 @@ function App() {
             const mId = m.establishmentId || m.establishmentid || m.establishment_id;
             return mId && String(mId).toLowerCase() === String(clientEstId).toLowerCase();
           })}
+          estSettings={estSettings}
           setView={setView}
           showToast={showToast}
           formatCurrency={formatCurrency}
@@ -499,7 +531,7 @@ function LandingView({ setView, setClientEstId }) {
 }
 
 // --- ADMIN VIEW ---
-function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, setView, formatCurrency, setClientEstId, refreshMenus, refreshOrders }) {
+function AdminView({ user, adminTab, setAdminTab, menuItems, orders, estSettings, setEstSettings, showToast, setView, formatCurrency, setClientEstId, refreshMenus, refreshOrders, refreshSettings }) {
   const firstName = user?.user_metadata?.nome_completo?.split(' ')[0] || 'Estabelecimento';
   const assinaturaExpiraEm = user?.user_metadata?.assinatura_expira_em;
   const isExpired = assinaturaExpiraEm ? Date.now() > assinaturaExpiraEm : false;
@@ -534,7 +566,7 @@ function AdminView({ user, adminTab, setAdminTab, menuItems, orders, showToast, 
 
       <main className="flex-1 max-w-4xl mx-auto w-full p-4 md:p-6 mt-2">
         {adminTab === 'pedidos' && <AdminOrders orders={orders} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
-        {adminTab === 'cardapio' && <AdminMenu user={user} menuItems={menuItems} showToast={showToast} formatCurrency={formatCurrency} refreshMenus={refreshMenus} />}
+        {adminTab === 'cardapio' && <AdminMenu user={user} menuItems={menuItems} estSettings={estSettings} setEstSettings={setEstSettings} showToast={showToast} formatCurrency={formatCurrency} refreshMenus={refreshMenus} refreshSettings={refreshSettings} />}
         {adminTab === 'qr' && <AdminQR user={user} showToast={showToast} setView={setView} setClientEstId={setClientEstId} />}
         {adminTab === 'assinatura' && <AdminSubscription user={user} showToast={showToast} />}
         {adminTab === 'historico' && <AdminHistory orders={orders} formatCurrency={formatCurrency} />}
@@ -618,7 +650,6 @@ function AdminOrders({ orders, showToast, formatCurrency, refreshOrders }) {
               <div>
                 <h3 className="font-bold text-lg text-slate-800">{order.customerName}</h3>
                 <p className="text-orange-600 font-semibold text-sm">Mesa/Local: {order.location}</p>
-                {order.phone && <p className="text-slate-500 text-sm mt-1">Tel: {order.phone}</p>}
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-bold ${order.status === 'Novo' ? 'bg-red-100 text-red-600' : order.status === 'Em Preparo' ? 'bg-blue-100 text-blue-600' : order.status === 'Entregue' ? 'bg-yellow-100 text-yellow-700' : order.status === 'Pagamento Pendente' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700'}`}>
                 {order.status}
@@ -698,16 +729,43 @@ function AdminHistory({ orders, formatCurrency }) {
   );
 }
 
-function AdminMenu({ user, menuItems, showToast, formatCurrency, refreshMenus }) {
+function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, formatCurrency, refreshMenus, refreshSettings }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: 'Bebidas' });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const groupedItems = menuItems.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = [];
     acc[item.category].push(item);
     return acc;
   }, {});
+
+  const handleUpdateSettings = async (field, value) => {
+    setIsSavingSettings(true);
+    try {
+      const { data: existing } = await supabase.from('clickbeach_settings').select('id').eq('establishmentId', user.id).maybeSingle();
+      
+      const payload = { 
+        establishmentId: user.id,
+        [field]: value,
+        updated_at: new Date().toISOString()
+      };
+
+      if (existing) {
+        await supabase.from('clickbeach_settings').update(payload).eq('establishmentId', user.id);
+      } else {
+        await supabase.from('clickbeach_settings').insert([payload]);
+      }
+      
+      if (refreshSettings) refreshSettings();
+      showToast("Configurações atualizadas!");
+    } catch (e) {
+      showToast("Erro ao salvar configurações", "error");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const handleAddItem = async (e) => {
     e.preventDefault();
@@ -758,6 +816,47 @@ function AdminMenu({ user, menuItems, showToast, formatCurrency, refreshMenus })
 
   return (
     <div className="space-y-6">
+      {/* Bloco de Configuração de Taxas */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <Store size={20} className="text-orange-500" /> Configurações de Taxas
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-700">Cobrar Mesa e Cadeiras?</span>
+              <span className="text-xs text-slate-500">Se ativado, este valor será somado a todos os pedidos.</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={estSettings.tableFeeActive} 
+                onChange={(e) => handleUpdateSettings('tableFeeActive', e.target.checked)} 
+                className="sr-only peer" 
+                disabled={isSavingSettings}
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+            </label>
+          </div>
+          
+          {estSettings.tableFeeActive && (
+            <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
+              <span className="text-sm font-medium text-slate-600">Valor da taxa (R$):</span>
+              <input 
+                type="number" 
+                step="0.01"
+                value={estSettings.tableFeeValue} 
+                onBlur={(e) => handleUpdateSettings('tableFeeValue', parseFloat(e.target.value) || 0)}
+                onChange={(e) => setEstSettings(prev => ({...prev, tableFeeValue: e.target.value}))}
+                className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 max-w-[120px] font-mono text-sm"
+                placeholder="0,00"
+                disabled={isSavingSettings}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-800">Cardápio</h2>
         <button onClick={() => { setIsAdding(!isAdding); if (isAdding) { setEditingId(null); setNewItem({ name: '', description: '', price: '', category: 'Bebidas' }); }}} className="bg-orange-100 text-orange-600 p-2 rounded-xl hover:bg-orange-200 transition-colors flex items-center gap-1 font-medium">
@@ -925,7 +1024,7 @@ function AdminSubscription({ user, showToast }) {
   );
 }
 
-function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency, refreshOrders }) {
+function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, formatCurrency, refreshOrders }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const groupedItems = menuItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
@@ -958,23 +1057,34 @@ function ClientView({ clientEstId, menuItems, setView, showToast, formatCurrency
         )}
       </main>
       {cartCount > 0 && !isCartOpen && <button onClick={() => setIsCartOpen(true)} className="fixed bottom-6 right-6 bg-orange-500 text-white p-4 rounded-full shadow-xl flex items-center gap-3 z-40 animate-bounce"><ShoppingCart size={24} /><span className="font-bold">{cartCount}</span></button>}
-      {isCartOpen && <CartModal cart={cart} cartTotal={cartTotal} close={() => setIsCartOpen(false)} updateQuantity={(id, d) => setCart(p => p.map(i => i.id === id ? {...i, quantity: i.quantity+d} : i).filter(i => i.quantity > 0))} clientEstId={clientEstId} setCart={setCart} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
+      {isCartOpen && <CartModal cart={cart} cartTotal={cartTotal} estSettings={estSettings} close={() => setIsCartOpen(false)} updateQuantity={(id, d) => setCart(p => p.map(i => i.id === id ? {...i, quantity: i.quantity+d} : i).filter(i => i.quantity > 0))} clientEstId={clientEstId} setCart={setCart} showToast={showToast} formatCurrency={formatCurrency} refreshOrders={refreshOrders} />}
     </div>
   );
 }
 
-function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCart, showToast, formatCurrency, refreshOrders }) {
+function CartModal({ cart, cartTotal, estSettings, close, updateQuantity, clientEstId, setCart, showToast, formatCurrency, refreshOrders }) {
   const [customerName, setCustomerName] = useState('');
   const [location, setLocation] = useState('');
-  const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const tableFee = estSettings.tableFeeActive ? parseFloat(estSettings.tableFeeValue) : 0;
+  const finalTotal = cartTotal + tableFee;
 
   const handleOrder = async (e) => {
     e.preventDefault();
-    if (!customerName || !location || !phone) return showToast("Preencha todos os campos", "error");
+    if (!customerName || !location) return showToast("Preencha todos os campos", "error");
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('clickbeach_orders').insert([{ establishmentId: clientEstId, customerName, location, phone, items: cart, total: cartTotal, status: 'Novo', timestamp: Date.now() }]);
+      const { error } = await supabase.from('clickbeach_orders').insert([{ 
+        establishmentId: clientEstId, 
+        customerName, 
+        location, 
+        phone: 'Não informado', 
+        items: cart, 
+        total: finalTotal, 
+        status: 'Novo', 
+        timestamp: Date.now() 
+      }]);
       if (error) throw error;
       showToast("Pedido enviado!");
       if (refreshOrders) refreshOrders();
@@ -982,44 +1092,6 @@ function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCar
       close();
     } catch (e) { 
       showToast("Erro ao enviar: " + (e.message || "Verifique o banco de dados"), "error"); 
-    }
-    finally { setSubmitting(false); }
-  };
-
-  const handleStripePayment = async (e) => {
-    e.preventDefault();
-    if (!customerName || !location || !phone) return showToast("Preencha todos os campos", "error");
-    setSubmitting(true);
-    try {
-      // Registra o pedido no Supabase como pendente de pagamento online
-      const { error } = await supabase.from('clickbeach_orders').insert([{ establishmentId: clientEstId, customerName, location, phone, items: cart, total: cartTotal, status: 'Pagamento Pendente', timestamp: Date.now() }]);
-      if (error) throw error;
-      
-      showToast("Redirecionando para pagamento seguro via Stripe...");
-      
-      if (window.Stripe) {
-        // --- CONFIGURAÇÃO STRIPE AQUI ---
-        // Descomente o código abaixo e adicione sua Public Key quando tiver um backend ou Link configurado
-        // const stripe = window.Stripe('pk_test_sua_chave_publica');
-        
-        /* await stripe.redirectToCheckout({
-          lineItems: [{ price: 'price_seu_id_de_produto', quantity: 1 }],
-          mode: 'payment',
-          successUrl: window.location.href + '&pagamento=sucesso',
-          cancelUrl: window.location.href,
-        });
-        */
-
-        // Simulação do redirecionamento
-        setTimeout(() => {
-          showToast("Pedido salvo! (Insira sua API Key do Stripe no código para checkout real)");
-          if (refreshOrders) refreshOrders();
-          setCart([]);
-          close();
-        }, 2500);
-      }
-    } catch (e) { 
-      showToast("Erro de conexão com o Stripe: " + (e.message || "Verifique a configuração"), "error"); 
     }
     finally { setSubmitting(false); }
   };
@@ -1041,13 +1113,32 @@ function CartModal({ cart, cartTotal, close, updateQuantity, clientEstId, setCar
           ))}
         </div>
         <div className="mt-6 pt-6 border-t space-y-4">
-          <div className="flex justify-between font-bold text-lg text-slate-800"><span>Total:</span><span>{formatCurrency(cartTotal)}</span></div>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between text-slate-600">
+              <span>Subtotal:</span>
+              <span>{formatCurrency(cartTotal)}</span>
+            </div>
+            {estSettings.tableFeeActive && (
+              <div className="flex justify-between text-slate-600">
+                <span>Taxa de Mesa/Cadeiras:</span>
+                <span>{formatCurrency(tableFee)}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between font-bold text-lg text-slate-800 border-t border-slate-100 pt-2">
+            <span>Total:</span>
+            <span>{formatCurrency(finalTotal)}</span>
+          </div>
           <form onSubmit={handleOrder} className="space-y-3">
             <input type="text" placeholder="Seu Nome" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-3 border rounded-xl" required />
-            <input type="text" placeholder="Mesa / Guarda-sol" value={location} onChange={e => setLocation(e.target.value)} className="w-full p-3 border rounded-xl" required />
-            <input type="tel" placeholder="Telefone" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 border rounded-xl" required />
+            <select value={location} onChange={e => setLocation(e.target.value)} className="w-full p-3 border rounded-xl bg-white" required>
+              <option value="" disabled>Selecione a Mesa (1 a 50)</option>
+              {[...Array(50)].map((_, i) => (
+                <option key={i+1} value={i+1}>Mesa {i+1}</option>
+              ))}
+            </select>
             <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={submitting} className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl shadow-lg">{submitting ? 'Aguarde...' : 'Fazer pedido'}</button>
+              <button type="submit" disabled={submitting} className="w-full bg-orange-500 text-white font-bold py-3 rounded-xl shadow-lg transition-transform active:scale-95">{submitting ? 'Aguarde...' : 'Fazer pedido'}</button>
             </div>
           </form>
         </div>

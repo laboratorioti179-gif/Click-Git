@@ -577,6 +577,7 @@ function AdminView({ user, adminTab, setAdminTab, menuItems, orders, estSettings
         {adminTab === 'qr' && <AdminQR user={user} showToast={showToast} setView={setView} setClientEstId={setClientEstId} />}
         {adminTab === 'assinatura' && <AdminSubscription user={user} showToast={showToast} />}
         {adminTab === 'historico' && <AdminHistory orders={orders} formatCurrency={formatCurrency} />}
+        {adminTab === 'perfil' && <AdminProfile user={user} showToast={showToast} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 md:relative md:border-t-0 md:bg-transparent md:justify-center md:gap-4 md:p-4">
@@ -585,6 +586,7 @@ function AdminView({ user, adminTab, setAdminTab, menuItems, orders, estSettings
         <NavButton active={adminTab === 'qr'} onClick={() => handleTabChange('qr')} icon={<QrCode />} label="QR Code" />
         <NavButton active={adminTab === 'assinatura'} onClick={() => handleTabChange('assinatura')} icon={<CreditCard />} label="Assinatura" />
         <NavButton active={adminTab === 'historico'} onClick={() => handleTabChange('historico')} icon={<History />} label="Histórico" />
+        <NavButton active={adminTab === 'perfil'} onClick={() => handleTabChange('perfil')} icon={<User />} label="Perfil" />
       </nav>
     </div>
   );
@@ -732,6 +734,87 @@ function AdminHistory({ orders, formatCurrency }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AdminProfile({ user, showToast }) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    quiosque: user?.user_metadata?.quiosque || '',
+    nome_completo: user?.user_metadata?.nome_completo || '',
+    documento: user?.user_metadata?.documento || '',
+    celular: user?.user_metadata?.celular || '',
+    cidade_estado: user?.user_metadata?.cidade_estado || '',
+    email: user?.email || ''
+  });
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const updates = {
+        data: {
+          quiosque: formData.quiosque,
+          nome_completo: formData.nome_completo,
+          documento: formData.documento,
+          celular: formData.celular,
+          cidade_estado: formData.cidade_estado
+        }
+      };
+      
+      // Atualizar o e-mail no Supabase exige envio de link de confirmação se configurado assim no painel
+      if (formData.email !== user.email) {
+        updates.email = formData.email;
+      }
+      
+      const { error } = await supabase.auth.updateUser(updates);
+      if (error) throw error;
+      
+      showToast("Perfil atualizado com sucesso!");
+    } catch (error) {
+      showToast("Erro ao atualizar: " + error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl mx-auto">
+      <h2 className="text-2xl font-bold text-slate-800 mb-6">Meu Perfil</h2>
+      <form onSubmit={handleSave} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Nome do Quiosque</label>
+            <input type="text" value={formData.quiosque} onChange={e => setFormData({...formData, quiosque: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Nome Completo</label>
+            <input type="text" value={formData.nome_completo} onChange={e => setFormData({...formData, nome_completo: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">E-mail</label>
+            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1">CPF/CNPJ</label>
+              <input type="text" value={formData.documento} onChange={e => setFormData({...formData, documento: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1">Celular</label>
+              <input type="tel" value={formData.celular} onChange={e => setFormData({...formData, celular: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Cidade/Estado</label>
+            <input type="text" value={formData.cidade_estado} onChange={e => setFormData({...formData, cidade_estado: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 mt-1" required />
+          </div>
+        </div>
+        <button type="submit" disabled={loading} className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-bold py-3 rounded-xl transition-colors shadow-md mt-6">
+          {loading ? 'Salvando...' : 'Salvar Alterações'}
+        </button>
+      </form>
     </div>
   );
 }
@@ -1067,6 +1150,26 @@ function AdminSubscription({ user, showToast }) {
 function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, formatCurrency, refreshOrders }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [estName, setEstName] = useState('...');
+
+  useEffect(() => {
+    if (clientEstId && supabase) {
+      // Tenta buscar usando a função (lê direto do cadastro)
+      supabase.rpc('get_quiosque_name', { est_id: clientEstId })
+        .then(({ data, error }) => {
+          if (data && !error) {
+            setEstName(data);
+          } else {
+            // Fallback de segurança se a função não existir
+            supabase.from('clickbeach_accounts').select('quiosque').eq('id', clientEstId).maybeSingle()
+              .then((res) => setEstName(res.data?.quiosque || 'nosso quiosque'))
+              .catch(() => setEstName('nosso quiosque'));
+          }
+        })
+        .catch(() => setEstName('nosso quiosque'));
+    }
+  }, [clientEstId]);
+
   const groupedItems = menuItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -1074,7 +1177,11 @@ function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, f
   return (
     <div className="bg-slate-50 min-h-screen pb-24">
       <header className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white p-6 rounded-b-3xl shadow-md sticky top-0 z-10 flex justify-between items-center">
-        <div><h1 className="text-2xl font-bold">Cardápio Digital</h1><p className="text-cyan-100 text-xs">A beira mar!</p></div>
+        <div>
+          <p className="text-cyan-100 text-sm font-medium mb-1">Bem vindo ao, <span className="font-bold text-white text-base">{estName}</span></p>
+          <h1 className="text-2xl font-bold">Cardápio Digital</h1>
+          <p className="text-cyan-100 text-xs">A beira mar!</p>
+        </div>
         <button onClick={() => setView('landing')} className="bg-white/20 p-2 rounded-full"><X size={20} /></button>
       </header>
       <main className="max-w-xl mx-auto p-4 mt-4 space-y-8">

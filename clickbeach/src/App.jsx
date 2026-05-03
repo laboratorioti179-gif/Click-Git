@@ -85,7 +85,7 @@ function App() {
   const [view, setView] = useState('landing'); 
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [estSettings, setEstSettings] = useState({ tableFeeActive: false, tableFeeValue: 0 });
+  const [estSettings, setEstSettings] = useState({ tableFeeActive: false, tableFeeValue: 0, tableFeeConsumable: false });
   const [adminTab, setAdminTab] = useState('pedidos');
   const [clientEstId, setClientEstId] = useState('');
   const [toast, setToast] = useState(null);
@@ -196,7 +196,11 @@ function App() {
     try {
       const { data, error } = await supabase.from('clickbeach_settings').select('*').eq('establishmentId', targetId).maybeSingle();
       if (error) console.error(error);
-      if (data) setEstSettings({ tableFeeActive: data.tableFeeActive, tableFeeValue: data.tableFeeValue });
+      if (data) setEstSettings({ 
+        tableFeeActive: data.tableFeeActive, 
+        tableFeeValue: data.tableFeeValue,
+        tableFeeConsumable: data.tableFeeConsumable || false
+      });
     } catch (e) { console.error(e); }
   }, [user, view, clientEstId]);
 
@@ -246,7 +250,6 @@ function App() {
     fetchOrders();
 
     const intervalId = setInterval(() => {
-      fetchSettings();
       fetchMenus();
       fetchOrders();
     }, 5000);
@@ -679,7 +682,7 @@ function AdminOrders({ orders, showToast, formatCurrency, refreshOrders }) {
              {(order.status === 'Novo' || order.status === 'Em Preparo') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Entregue')} className="flex-1 bg-yellow-500 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Entregar</button>}
              {(order.status === 'Entregue') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Pagamento Pendente')} className="flex-1 bg-slate-500 text-white py-2 px-4 rounded-xl font-medium text-sm">Cobrar</button>}
              {(order.status === 'Entregue' || order.status === 'Pagamento Pendente') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Pago')} className="flex-1 bg-emerald-500 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Pago</button>}
-             {(order.status === 'Pago') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Finalizado')} className="flex-1 bg-slate-800 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Finalizar</button>}
+             {(order.status === 'Pago' || order.status === 'Entregue') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Finalizado')} className="flex-1 bg-slate-800 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Finalizar</button>}
           </div>
         </div>
       ))}
@@ -747,6 +750,9 @@ function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, fo
 
   const handleUpdateSettings = async (field, value) => {
     setIsSavingSettings(true);
+    const previousValue = estSettings[field];
+    // Atualiza imediatamente o estado visual para evitar o atraso do banco
+    setEstSettings(prev => ({ ...prev, [field]: value }));
     try {
       const { data: existing } = await supabase.from('clickbeach_settings').select('id').eq('establishmentId', user.id).maybeSingle();
       
@@ -756,16 +762,27 @@ function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, fo
         updated_at: new Date().toISOString()
       };
 
+      let dbError;
       if (existing) {
-        await supabase.from('clickbeach_settings').update(payload).eq('establishmentId', user.id);
+        const { error } = await supabase.from('clickbeach_settings').update(payload).eq('establishmentId', user.id);
+        dbError = error;
       } else {
-        await supabase.from('clickbeach_settings').insert([payload]);
+        const { error } = await supabase.from('clickbeach_settings').insert([payload]);
+        dbError = error;
       }
+
+      if (dbError) throw dbError;
       
-      if (refreshSettings) refreshSettings();
+      // Força a sincronização do estado novamente para garantir que a UI não sofra "reset"
+      setEstSettings(prev => ({ ...prev, [field]: value }));
       showToast("Configurações atualizadas!");
     } catch (e) {
-      showToast("Erro ao salvar configurações", "error");
+      setEstSettings(prev => ({ ...prev, [field]: previousValue }));
+      if (e?.code === 'PGRST204') {
+        showToast("Por favor, crie a coluna 'tableFeeConsumable' (tipo boolean) no seu Supabase!", "error", true);
+      } else {
+        showToast("Erro ao salvar! Verifique o banco de dados.", "error");
+      }
     } finally {
       setIsSavingSettings(false);
     }
@@ -834,7 +851,7 @@ function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, fo
             <label className="relative inline-flex items-center cursor-pointer">
               <input 
                 type="checkbox" 
-                checked={estSettings.tableFeeActive} 
+                checked={!!estSettings.tableFeeActive} 
                 onChange={(e) => handleUpdateSettings('tableFeeActive', e.target.checked)} 
                 className="sr-only peer" 
                 disabled={isSavingSettings}
@@ -844,18 +861,37 @@ function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, fo
           </div>
           
           {estSettings.tableFeeActive && (
-            <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
-              <span className="text-sm font-medium text-slate-600">Valor da taxa (R$):</span>
-              <input 
-                type="number" 
-                step="0.01"
-                value={estSettings.tableFeeValue} 
-                onBlur={(e) => handleUpdateSettings('tableFeeValue', parseFloat(e.target.value) || 0)}
-                onChange={(e) => setEstSettings(prev => ({...prev, tableFeeValue: e.target.value}))}
-                className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 max-w-[120px] font-mono text-sm"
-                placeholder="0,00"
-                disabled={isSavingSettings}
-              />
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-slate-600">Valor da taxa (R$):</span>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={estSettings.tableFeeValue} 
+                  onBlur={(e) => handleUpdateSettings('tableFeeValue', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setEstSettings(prev => ({...prev, tableFeeValue: e.target.value}))}
+                  className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 max-w-[120px] font-mono text-sm"
+                  placeholder="0,00"
+                  disabled={isSavingSettings}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-slate-700">Taxa Consumível?</span>
+                  <span className="text-xs text-slate-500">Se ativado, o valor da taxa é descontado do consumo total.</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={!!estSettings.tableFeeConsumable} 
+                    onChange={(e) => handleUpdateSettings('tableFeeConsumable', e.target.checked)} 
+                    className="sr-only peer" 
+                    disabled={isSavingSettings}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                </label>
+              </div>
             </div>
           )}
         </div>
@@ -1072,7 +1108,10 @@ function CartModal({ cart, cartTotal, estSettings, close, updateQuantity, client
   const [submitting, setSubmitting] = useState(false);
 
   const tableFee = estSettings.tableFeeActive ? parseFloat(estSettings.tableFeeValue) : 0;
-  const finalTotal = cartTotal + tableFee;
+  // Lógica: Se for consumível, o total é o maior entre (consumo) ou (taxa). Se não, é a soma.
+  const finalTotal = estSettings.tableFeeConsumable 
+    ? Math.max(cartTotal, tableFee) 
+    : cartTotal + tableFee;
 
   const handleOrder = async (e) => {
     e.preventDefault();
@@ -1124,7 +1163,7 @@ function CartModal({ cart, cartTotal, estSettings, close, updateQuantity, client
             </div>
             {estSettings.tableFeeActive && (
               <div className="flex justify-between text-slate-600">
-                <span>Taxa de Mesa/Cadeiras:</span>
+                <span>Taxa de Mesa/Cadeiras{estSettings.tableFeeConsumable ? ' (Consumível)' : ''}:</span>
                 <span>{formatCurrency(tableFee)}</span>
               </div>
             )}

@@ -41,25 +41,6 @@ const SUPABASE_URL = getEnvVar('REACT_APP_SUPABASE_URL', 'https://cemsjfobgqjdgy
 const SUPABASE_ANON_KEY = getEnvVar('REACT_APP_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlbXNqZm9iZ3FqZGd5eXZia2ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNjAxNjAsImV4cCI6MjA5MjczNjE2MH0.RF22cF54o2rrtGCUHT78kHB_ujtLqNUYzRtvVbmRGFw');
 let supabase = null;
 
-// --- AUDIO SETUP PARA MOBILE ---
-let notificationAudio = null;
-if (typeof window !== 'undefined') {
-  notificationAudio = new Audio('https://api.streamelements.com/kappa/v2/speech?voice=Vitoria&text=Click%20Beach!');
-  // Desbloqueia o áudio no primeiro toque na tela para permitir reprodução automática depois
-  const unlockAudio = () => {
-    if (notificationAudio) {
-      notificationAudio.play().then(() => {
-        notificationAudio.pause();
-        notificationAudio.currentTime = 0;
-      }).catch(() => {});
-    }
-    document.removeEventListener('touchstart', unlockAudio);
-    document.removeEventListener('click', unlockAudio);
-  };
-  document.addEventListener('touchstart', unlockAudio);
-  document.addEventListener('click', unlockAudio);
-}
-
 export default function AppWrapper() {
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -206,10 +187,8 @@ function App() {
       const showSystemNotification = () => {
         // Toca um som de campainha/alerta para chamar atenção
         try {
-          if (notificationAudio) {
-            notificationAudio.currentTime = 0;
-            notificationAudio.play().catch(() => {});
-          }
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.play().catch(() => {});
         } catch (e) {}
 
         const options = { 

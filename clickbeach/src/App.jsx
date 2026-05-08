@@ -374,6 +374,7 @@ function App() {
           showToast={showToast}
           formatCurrency={formatCurrency}
           refreshOrders={fetchOrders}
+          user={user}
         />
       )}
     </div>
@@ -1184,7 +1185,7 @@ function AdminSubscription({ user, showToast }) {
   );
 }
 
-function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, formatCurrency, refreshOrders }) {
+function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, formatCurrency, refreshOrders, user }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [estName, setEstName] = useState('...');
@@ -1219,7 +1220,7 @@ function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, f
           <h1 className="text-2xl font-bold">Cardápio Digital</h1>
           <p className="text-cyan-100 text-xs">A beira mar!</p>
         </div>
-        <button onClick={() => setView('landing')} className="bg-white/20 p-2 rounded-full"><X size={20} /></button>
+        <button onClick={() => setView(user ? 'admin' : 'landing')} className="bg-white/20 p-2 rounded-full"><X size={20} /></button>
       </header>
       <main className="max-w-xl mx-auto p-4 mt-4 space-y-8">
         {Object.entries(groupedItems).length === 0 ? (

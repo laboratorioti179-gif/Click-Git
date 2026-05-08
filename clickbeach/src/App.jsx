@@ -1001,7 +1001,7 @@ function AdminMenu({ user, menuItems, estSettings, setEstSettings, showToast, fo
           <div className="flex gap-4">
             <input type="number" step="0.01" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Preço" required />
             <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-              <option>Bebidas</option><option>Porções</option><option>Pratos</option><option>Sobremesas</option>
+              <option>Bebidas</option><option>Porções</option><option>Diversos</option><option>Combo</option>
             </select>
           </div>
           <input type="text" value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} className="w-full px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Descrição (opcional)" />

@@ -184,12 +184,41 @@ function App() {
     setTimeout(() => setToast(null), 3000);
 
     if (forcePush && typeof Notification !== 'undefined') {
+      const showSystemNotification = () => {
+        // Toca um som de campainha/alerta para chamar atenção
+        try {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.play().catch(() => {});
+        } catch (e) {}
+
+        const options = { 
+          body: msg,
+          vibrate: [200, 100, 200, 100, 200],
+          requireInteraction: true 
+        };
+
+        // Usa o Service Worker para garantir a exibição nativa no sistema, mesmo em segundo plano
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistration().then(reg => {
+            if (reg && reg.showNotification) {
+              reg.showNotification('Click Beach', options);
+            } else {
+              new Notification('Click Beach', options);
+            }
+          }).catch(() => {
+            new Notification('Click Beach', options);
+          });
+        } else {
+          new Notification('Click Beach', options);
+        }
+      };
+
       if (Notification.permission === 'granted') {
-        new Notification('Click Beach', { body: msg });
+        showSystemNotification();
       } else if (Notification.permission !== 'denied') {
         Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
-            new Notification('Click Beach', { body: msg });
+            showSystemNotification();
           }
         });
       }

@@ -311,6 +311,20 @@ function App() {
     }
   }, [user, showToast]);
 
+  // Limpeza automática do histórico (apaga pedidos com mais de 7 meses)
+  useEffect(() => {
+    if (!user || view !== 'admin' || !supabase) return;
+    
+    // Calcula a data de 7 meses atrás em milissegundos
+    const seteMesesAtras = Date.now() - (7 * 30 * 24 * 60 * 60 * 1000);
+    
+    supabase.from('clickbeach_orders')
+      .delete()
+      .lt('timestamp', seteMesesAtras)
+      .eq('establishmentId', user.id)
+      .then(); // Executa em segundo plano sem travar a tela
+  }, [user, view]);
+
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
@@ -657,7 +671,7 @@ function AdminOrders({ orders, showToast, formatCurrency, refreshOrders }) {
     }
   };
 
-  const activeOrders = orders.filter(o => o.status !== 'Finalizado');
+  const activeOrders = orders.filter(o => o.status !== 'Finalizado' && o.status !== 'Cancelado');
   const groupedOrders = activeOrders.reduce((acc, order) => {
     const baseKey = order.location.trim().toUpperCase();
     const key = order.status === 'Pago' ? `${baseKey}_PAGO` : `${baseKey}_ATIVO`;
@@ -719,6 +733,7 @@ function AdminOrders({ orders, showToast, formatCurrency, refreshOrders }) {
           </div>
           <div className="flex flex-row md:flex-col gap-2 justify-end border-t border-slate-100 pt-4 md:border-t-0 md:pt-0 md:border-l md:pl-4">
              {order.status === 'Novo' && <button onClick={() => updateOrderStatus(order.originalOrders, 'Em Preparo')} className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-xl font-medium text-sm">Preparar</button>}
+             {order.status === 'Novo' && <button onClick={() => updateOrderStatus(order.originalOrders, 'Cancelado')} className="flex-1 bg-red-500 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><X size={16}/> Cancelar</button>}
              {(order.status === 'Novo' || order.status === 'Em Preparo') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Entregue')} className="flex-1 bg-yellow-500 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Entregar</button>}
              {(order.status === 'Entregue') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Pagamento Pendente')} className="flex-1 bg-slate-500 text-white py-2 px-4 rounded-xl font-medium text-sm">Cobrar</button>}
              {(order.status === 'Entregue' || order.status === 'Pagamento Pendente') && <button onClick={() => updateOrderStatus(order.originalOrders, 'Pago')} className="flex-1 bg-emerald-500 text-white py-2 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1"><CheckCircle2 size={16}/> Pago</button>}

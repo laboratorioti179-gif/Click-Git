@@ -1232,7 +1232,14 @@ function ClientView({ clientEstId, menuItems, estSettings, setView, showToast, f
               <div className="grid gap-4">
                 {items.map(item => (
                   <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                    <div className="flex-1 pr-4"><h3 className={`font-bold ${item.available === false ? 'text-slate-400' : 'text-slate-800'}`}>{item.name}</h3><p className="text-emerald-600 font-bold font-mono mt-1">{formatCurrency(item.price)}</p></div>
+                    <div className="flex-1 pr-4 flex items-center gap-3">
+                      {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="w-16 h-16 object-cover rounded-xl shadow-sm" />}
+                      <div>
+                        <h3 className={`font-bold ${item.available === false ? 'text-slate-400' : 'text-slate-800'}`}>{item.name}</h3>
+                        {item.description && <p className="text-xs text-slate-500 mt-1 leading-tight">{item.description}</p>}
+                        <p className="text-emerald-600 font-bold font-mono mt-1">{formatCurrency(item.price)}</p>
+                      </div>
+                    </div>
                     <button onClick={() => { setCart(prev => { const ex = prev.find(i => i.id === item.id); if (ex) return prev.map(i => i.id === item.id ? {...i, quantity: i.quantity+1} : i); return [...prev, {...item, quantity: 1}]; }); showToast("Adicionado!"); }} disabled={item.available === false} className={`p-3 rounded-xl shadow-sm ${item.available === false ? 'bg-slate-100 text-slate-300' : 'bg-orange-100 text-orange-600'}`}><Plus size={20} /></button>
                   </div>
                 ))}
